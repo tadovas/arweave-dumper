@@ -8,7 +8,7 @@ use crate::avro::{self, BundleTag};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataItem {
-    pub signature_type: u16,
+    pub signature_name: String,
     pub signature: Base64,
     pub owner_public_key: Base64,
     pub target: Option<Base64>,
@@ -22,12 +22,15 @@ where
     R: AsyncRead + Unpin,
 {
     let signature_type = reader.read_u16_le().await?;
-    assert_eq!(
-        signature_type, 1,
-        "unexpected signature type: {signature_type}"
-    );
+    let (signature_name, length) = match signature_type {
+        1 => ("arweave", 512),
+        2 => ("ed25519", 64),
+        3 => ("ethereum", 65),
+        4 => ("solana", 64),
+        v => return Err(anyhow::anyhow!("Unsupported signature type: {v}")),
+    };
     // signature type 1 has 512 bytes signature
-    let signature = read_buffer_as_base64(&mut reader, 512).await?;
+    let signature = read_buffer_as_base64(&mut reader, length).await?;
 
     let owner_public_key = read_buffer_as_base64(&mut reader, 512).await?;
 
@@ -49,7 +52,7 @@ where
     let _ = reader.read_to_end(&mut data).await?;
 
     Ok(DataItem {
-        signature_type,
+        signature_name: signature_name.to_string(),
         signature,
         owner_public_key,
         target,

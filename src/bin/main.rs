@@ -1,7 +1,7 @@
 use arweave_dumper::{arweave, async_json, bundle};
 use arweave_rs::crypto::base64::Base64;
 use clap::{command, Parser};
-use futures_util::{pin_mut, TryStreamExt as _};
+use futures_util::{pin_mut, TryStreamExt};
 use tokio::io::AsyncWriteExt;
 use tokio_util::io::StreamReader;
 
@@ -13,6 +13,10 @@ struct Args {
     #[arg(short, long)]
     transaction_id: Base64,
 
+    /// Arweave API base url
+    #[arg(long, default_value_t = arweave_rs::consts::ARWEAVE_BASE_URL.to_string())]
+    base_url: String,
+
     /// JSON output file name. Default name: <transaction_ID>.json
     #[arg(long, short)]
     output_file: Option<String>,
@@ -22,10 +26,11 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     let Args {
         transaction_id,
+        base_url,
         output_file,
     } = Args::try_parse()?;
 
-    let arweave_client = arweave::Client::new()?;
+    let arweave_client = arweave::Client::new(&base_url)?;
 
     let tx = arweave_client.fetch_transaction(&transaction_id).await?;
 
@@ -53,9 +58,13 @@ async fn main() -> anyhow::Result<()> {
     let mut json_writer = async_json::ArrayWriter::new(&mut buf_writer);
     json_writer.write_open_bracket().await?;
 
+    println!("Parsing data");
     while let Some(data_item) = data_item_stream.try_next().await? {
         json_writer.write_item(&data_item).await?;
+        print!(".");
     }
+    println!();
+    println!("Done!");
 
     json_writer.write_close_bracket().await?;
     buf_writer.flush().await?;

@@ -55,9 +55,9 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(api_url: &str) -> anyhow::Result<Self> {
         Ok(Self {
-            base_url: Url::from_str(arweave_rs::consts::ARWEAVE_BASE_URL)?,
+            base_url: Url::from_str(api_url)?,
             http_client: reqwest::ClientBuilder::new().build()?,
         })
     }
