@@ -1,4 +1,4 @@
-use arweave_dumper::{arweave, bundle};
+use arweave_dumper::{arweave, async_json, bundle};
 use arweave_rs::crypto::base64::Base64;
 use clap::{command, Parser};
 use futures_util::{pin_mut, TryStreamExt as _};
@@ -46,13 +46,14 @@ async fn main() -> anyhow::Result<()> {
     let writer = tokio::fs::File::create(&filename).await?;
     let mut buf_writer = tokio::io::BufWriter::new(writer);
 
+    let mut json_writer = async_json::ArrayWriter::new(&mut buf_writer);
+    json_writer.write_open_bracket().await?;
+
     while let Some(data_item) = data_item_stream.try_next().await? {
-        // TODO - we need async json writer
-        buf_writer
-            .write_all(&serde_json::to_vec_pretty(&data_item)?)
-            .await?;
+        json_writer.write_item(&data_item).await?;
     }
 
+    json_writer.write_close_bracket().await?;
     buf_writer.flush().await?;
     println!("Bundle data stored in: {filename}");
     Ok(())
