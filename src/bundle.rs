@@ -57,7 +57,7 @@ where
         .await
         .context("tag data")?;
 
-    let tags = avro::parse_tag_list(tag_data.as_slice())?;
+    let tags = avro::parse_tag_list(tag_data.as_slice()).context("Avro tags parse")?;
     assert_eq!(tag_count as usize, tags.len());
 
     let mut data = vec![0; 1024];
