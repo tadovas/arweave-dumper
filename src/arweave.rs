@@ -70,20 +70,17 @@ impl TxMetadata {
         self.tag_map.get(name).map(|s| s.as_str())
     }
 
-    pub fn required_tag(&self, name: &str) -> anyhow::Result<&str> {
-        self.get_tag(name)
-            .ok_or_else(|| anyhow::anyhow!("tag {name} not found!"))
-    }
+    pub fn is_bundle(&self) -> bool {
+        let is_bundle_format = self
+            .get_tag("Bundle-Format")
+            .filter(|v| *v == "binary")
+            .is_some();
 
-    pub fn is_bundle(&self) -> anyhow::Result<()> {
-        let bundle_format = self.required_tag("Bundle-Format")?;
-        let bundle_version = self.required_tag("Bundle-Version")?;
+        let is_correct_bundle_version = self
+            .get_tag("Bundle-Version")
+            .filter(|v| *v == "2.0.0")
+            .is_some();
 
-        match (bundle_format, bundle_version) {
-            ("binary", "2.0.0") => Ok(()),
-            _ => Err(anyhow::anyhow!(
-                "incorrect bundle format {bundle_format} or version {bundle_version}"
-            )),
-        }
+        is_bundle_format && is_correct_bundle_version
     }
 }

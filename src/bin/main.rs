@@ -26,7 +26,11 @@ async fn main() -> anyhow::Result<()> {
 
     let tx = arweave_client.fetch_transaction(&transaction_id).await?;
 
-    tx.is_bundle()?;
+    if !tx.is_bundle() {
+        return Err(anyhow::anyhow!(
+            "Given transacion by ID is not ANS-104 bundle"
+        ));
+    }
 
     //TODO: instead of reading whole body - make a stream consumable by async read
     let data = arweave_client
