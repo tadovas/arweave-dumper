@@ -1,4 +1,6 @@
 use arweave_rs::crypto::base64::Base64;
+use async_stream::try_stream;
+use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
@@ -20,7 +22,7 @@ where
     R: AsyncRead + Unpin,
 {
     let signature_type = reader.read_u16_le().await?;
-    debug_assert_eq!(
+    assert_eq!(
         signature_type, 1,
         "unexpected signature type: {signature_type}"
     );
@@ -41,7 +43,7 @@ where
     reader.read_exact(tag_data.as_mut_slice()).await?;
 
     let tags = avro::parse_tag_list(tag_data.as_slice())?;
-    debug_assert_eq!(tag_count as usize, tags.len());
+    assert_eq!(tag_count as usize, tags.len());
 
     let mut data = vec![0; 1024];
     let _ = reader.read_to_end(&mut data).await?;
@@ -57,22 +59,23 @@ where
     })
 }
 
-/// Reads a list of ASN-104 Data items from given byte reader
-pub async fn read_ans104_bundle<R>(mut reader: R) -> anyhow::Result<Vec<DataItem>>
+pub fn ans104_bundle_data_item_stream<R>(
+    mut reader: R,
+) -> impl Stream<Item = anyhow::Result<DataItem>>
 where
     R: AsyncRead + Unpin,
 {
-    let total_items = read_u256_as_u128(&mut reader).await?;
-    let data_items_table = read_data_item_and_entry_id_table(&mut reader, total_items).await?;
+    try_stream! {
+        let total_items = read_u256_as_u128(&mut reader).await?;
+        let data_items_table = read_data_item_and_entry_id_table(&mut reader, total_items).await?;
 
-    //TODO (convert into stream of data items?)
-    let mut res = vec![];
-    for (data_item_size, _) in data_items_table {
-        let mut data_item_reader = (&mut reader).take(data_item_size as u64);
-        let data_item = read_data_item(&mut data_item_reader).await?;
-        res.push(data_item);
+        for (data_item_size, _) in data_items_table {
+            let mut data_item_reader = (&mut reader).take(data_item_size as u64);
+            let data_item = read_data_item(&mut data_item_reader).await?;
+            yield data_item
+        }
+
     }
-    Ok(res)
 }
 
 // a little helper to read u256 (32bytes size) integers as u128 (ignoring upper half)
@@ -107,7 +110,7 @@ where
     R: AsyncRead + Unpin,
 {
     let is_present = reader.read_u8().await?;
-    debug_assert!(is_present < 2); // either 0 or 1 is allowed
+    assert!(is_present < 2); // either 0 or 1 is allowed
     Ok(if is_present == 1 {
         Some(read_buffer_as_base64(reader, size).await?)
     } else {
@@ -135,15 +138,18 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use futures_util::stream::TryStreamExt;
 
     #[tokio::test]
     async fn parse_sample_tx_data_bundle() {
         let hex_str = include_str!("../res/uYpAeGCj8Xe_J0sKiZ_aJ4Zl1zQLgDH5ia-pqtNLJEA_data.hex");
         let data = hex::decode(hex_str).expect("should parse");
 
-        let data_items = read_ans104_bundle(data.as_slice())
+        let data_items = ans104_bundle_data_item_stream(data.as_slice())
+            .try_collect::<Vec<DataItem>>()
             .await
             .expect("should work");
+
         assert_eq!(data_items.len(), 4);
     }
 

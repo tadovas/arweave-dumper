@@ -1,6 +1,8 @@
 use arweave_dumper::{arweave, bundle};
 use arweave_rs::crypto::base64::Base64;
 use clap::{command, Parser};
+use futures_util::{pin_mut, TryStreamExt as _};
+use tokio::io::AsyncWriteExt;
 
 /// Transaction bundle dumper from Arweave network
 #[derive(Parser, Debug)]
@@ -36,13 +38,22 @@ async fn main() -> anyhow::Result<()> {
     let data = arweave_client
         .fetch_transaction_data(&transaction_id)
         .await?;
-    //TODO: instead returning a list of DataItems return a stream of data items
-    let data_items = bundle::read_ans104_bundle(data.0.as_slice()).await?;
+
+    let data_item_stream = bundle::ans104_bundle_data_item_stream(data.0.as_slice());
+    pin_mut!(data_item_stream);
 
     let filename = output_file.unwrap_or_else(|| format! {"{transaction_id}.json"});
-    //TODO: explore option to sink stream of data items into file - effectively making pull based parsing
-    tokio::fs::write(&filename, serde_json::to_string_pretty(&data_items)?).await?;
+    let writer = tokio::fs::File::create(&filename).await?;
+    let mut buf_writer = tokio::io::BufWriter::new(writer);
 
+    while let Some(data_item) = data_item_stream.try_next().await? {
+        // TODO - we need async json writer
+        buf_writer
+            .write_all(&serde_json::to_vec_pretty(&data_item)?)
+            .await?;
+    }
+
+    buf_writer.flush().await?;
     println!("Bundle data stored in: {filename}");
     Ok(())
 }
