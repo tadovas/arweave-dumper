@@ -3,6 +3,7 @@ use arweave_rs::crypto::base64::Base64;
 use clap::{command, Parser};
 use futures_util::{pin_mut, TryStreamExt as _};
 use tokio::io::AsyncWriteExt;
+use tokio_util::io::StreamReader;
 
 /// Transaction bundle dumper from Arweave network
 #[derive(Parser, Debug)]
@@ -34,12 +35,15 @@ async fn main() -> anyhow::Result<()> {
         ));
     }
 
-    //TODO: instead of reading whole body - make a stream consumable by async read
-    let data = arweave_client
-        .fetch_transaction_data(&transaction_id)
-        .await?;
+    let chunk_stream = arweave_client
+        .transaction_data_chunk_stream(&transaction_id)
+        // FIXME: little hack to get back to io::Error from general anyhow::Error to make stream_reader happy
+        .map_err(std::io::Error::other);
 
-    let data_item_stream = bundle::ans104_bundle_data_item_stream(data.0.as_slice());
+    let stream_reader = StreamReader::new(chunk_stream);
+    pin_mut!(stream_reader);
+
+    let data_item_stream = bundle::ans104_bundle_data_item_stream(stream_reader);
     pin_mut!(data_item_stream);
 
     let filename = output_file.unwrap_or_else(|| format! {"{transaction_id}.json"});
