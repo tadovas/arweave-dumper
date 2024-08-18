@@ -1,3 +1,4 @@
+use anyhow::Context;
 use arweave_rs::crypto::base64::Base64;
 use async_stream::try_stream;
 use futures_core::Stream;
@@ -21,35 +22,46 @@ pub async fn read_data_item<R>(mut reader: R) -> anyhow::Result<DataItem>
 where
     R: AsyncRead + Unpin,
 {
-    let signature_type = reader.read_u16_le().await?;
-    let (signature_name, length) = match signature_type {
-        1 => ("arweave", 512),
-        2 => ("ed25519", 64),
-        3 => ("ethereum", 65),
-        4 => ("solana", 64),
+    let signature_type = reader.read_u16_le().await.context("signature type")?;
+    let (signature_name, sig_length, pub_key_length) = match signature_type {
+        1 => ("arweave", 512, 512),
+        2 => ("ed25519", 64, 32),
+        3 => ("ethereum", 65, 65),
+        4 => ("solana", 64, 32),
         v => return Err(anyhow::anyhow!("Unsupported signature type: {v}")),
     };
     // signature type 1 has 512 bytes signature
-    let signature = read_buffer_as_base64(&mut reader, length).await?;
+    let signature = read_buffer_as_base64(&mut reader, sig_length)
+        .await
+        .context("signature")?;
 
-    let owner_public_key = read_buffer_as_base64(&mut reader, 512).await?;
+    let owner_public_key = read_buffer_as_base64(&mut reader, pub_key_length)
+        .await
+        .context("owner public key")?;
 
-    let target = read_optional_field_as_base64(&mut reader, 32).await?;
+    let target = read_optional_field_as_base64(&mut reader, 32)
+        .await
+        .context("target")?;
 
-    let anchor = read_optional_field_as_base64(&mut reader, 32).await?;
+    let anchor = read_optional_field_as_base64(&mut reader, 32)
+        .await
+        .context("anchor")?;
 
-    let tag_count = reader.read_u64_le().await?;
+    let tag_count = reader.read_u64_le().await.context("tag count")?;
 
-    let tags_size = reader.read_u64_le().await?;
+    let tags_size = reader.read_u64_le().await.context("tags_size")?;
 
     let mut tag_data = vec![0; tags_size as usize];
-    reader.read_exact(tag_data.as_mut_slice()).await?;
+    reader
+        .read_exact(tag_data.as_mut_slice())
+        .await
+        .context("tag data")?;
 
     let tags = avro::parse_tag_list(tag_data.as_slice())?;
     assert_eq!(tag_count as usize, tags.len());
 
     let mut data = vec![0; 1024];
-    let _ = reader.read_to_end(&mut data).await?;
+    let _ = reader.read_to_end(&mut data).await.context("data field")?;
 
     Ok(DataItem {
         signature_name: signature_name.to_string(),
@@ -69,12 +81,12 @@ where
     R: AsyncRead + Unpin,
 {
     try_stream! {
-        let total_items = read_u256_as_u128(&mut reader).await?;
-        let data_items_table = read_data_item_and_entry_id_table(&mut reader, total_items).await?;
+        let total_items = read_u256_as_u128(&mut reader).await.context("total DataItems read")?;
+        let data_items_table = read_data_item_and_entry_id_table(&mut reader, total_items).await.context("DataItems table read")?;
 
         for (data_item_size, _) in data_items_table {
             let mut data_item_reader = (&mut reader).take(data_item_size as u64);
-            let data_item = read_data_item(&mut data_item_reader).await?;
+            let data_item = read_data_item(&mut data_item_reader).await.context("DataItem read")?;
             yield data_item
         }
 
