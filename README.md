@@ -21,15 +21,3 @@ Bundle data stored in: o0le1MwgKBVIrh3fqJnWCGNa4N0rDd2WDm15jjGIvBo.json
 ```
 JSON file should contain 0 to N DataItems. Regarding VERY large bundles - the only objects which are fully materialized in memory are data chunks theirselves (transaction data is downloaded by chunks) - one at the time, and DataItem itself (also fully serialized into JSON object). JSON array itself is written asynchronously to underlying file.
 
-## Known issues:
-Fails with transaction `VTzmxeLxtJnxuTJCkm9WmEgnL1ZTlL6KBRuhub83QXE`
-```
-Parsing data
-Error: DataItem read
-
-Caused by:
-    0: Avro tags parse
-    1: Failed to read bytes for decoding variable length integer
-    2: failed to fill whole buffer
-```
-Need to further dig in through Apache AVRO decoder.
