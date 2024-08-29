@@ -181,7 +181,6 @@ mod test {
 
     #[tokio::test]
     async fn test_read_to_the_end() {
-        use tokio::io::AsyncReadExt;
         let mut data: &[u8] = b"12345";
         let mut buff = Vec::with_capacity(1000);
         data.read_to_end(&mut buff).await.expect("should not fail");
@@ -191,7 +190,6 @@ mod test {
 
     #[tokio::test]
     async fn test_read_exact() {
-        use tokio::io::AsyncReadExt;
         let mut data: &[u8] = b"12345";
         let mut buff = vec![0u8; 5];
         data.read_exact(&mut buff).await.expect("should not fail");
