@@ -60,7 +60,7 @@ where
     let tags = avro::parse_tag_list(tag_data.as_slice()).context("Avro tags parse")?;
     assert_eq!(tag_count as usize, tags.len());
 
-    let mut data = vec![0; 1024];
+    let mut data = Vec::with_capacity(1024); // allocate 1kbytes initially
     let _ = reader.read_to_end(&mut data).await.context("data field")?;
 
     Ok(DataItem {
@@ -177,5 +177,25 @@ mod test {
         // some sanity checks
         assert_eq!(data_item.tags.len(), 18);
         assert_eq!(data_item.data.0.len(), 12928);
+    }
+
+    #[tokio::test]
+    async fn test_read_to_the_end() {
+        use tokio::io::AsyncReadExt;
+        let mut data: &[u8] = b"12345";
+        let mut buff = Vec::with_capacity(1000);
+        data.read_to_end(&mut buff).await.expect("should not fail");
+
+        assert_eq!(&buff, b"12345")
+    }
+
+    #[tokio::test]
+    async fn test_read_exact() {
+        use tokio::io::AsyncReadExt;
+        let mut data: &[u8] = b"12345";
+        let mut buff = vec![0u8; 5];
+        data.read_exact(&mut buff).await.expect("should not fail");
+
+        assert_eq!(&buff, b"12345")
     }
 }
