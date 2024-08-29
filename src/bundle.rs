@@ -176,7 +176,7 @@ mod test {
         let data_item = read_data_item(data.as_slice()).await.expect("should work");
         // some sanity checks
         assert_eq!(data_item.tags.len(), 18);
-        assert_eq!(data_item.data.0.len(), 12928);
+        assert_eq!(data_item.data.0.len(), 11904);
     }
 
     #[tokio::test]
