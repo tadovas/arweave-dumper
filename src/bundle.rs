@@ -1,5 +1,5 @@
 use anyhow::Context;
-use arweave_rs::crypto::base64::Base64;
+use arweave_rs::crypto::{base64::Base64, hash::sha256};
 use async_stream::try_stream;
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,7 @@ use crate::avro::{self, BundleTag};
 pub struct DataItem {
     pub signature_name: String,
     pub signature: Base64,
+    pub bundle_id: Base64,
     pub owner_public_key: Base64,
     pub target: Option<Base64>,
     pub anchor: Option<Base64>,
@@ -34,6 +35,8 @@ where
     let signature = read_buffer_as_base64(&mut reader, sig_length)
         .await
         .context("signature")?;
+
+    let bundle_id = Base64::from(&sha256(&signature.0)[..]);
 
     let owner_public_key = read_buffer_as_base64(&mut reader, pub_key_length)
         .await
@@ -71,6 +74,7 @@ where
     Ok(DataItem {
         signature_name: signature_name.to_string(),
         signature,
+        bundle_id,
         owner_public_key,
         target,
         anchor,
@@ -158,7 +162,10 @@ where
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use super::*;
+    use arweave_rs::crypto::hash::sha256;
     use futures_util::stream::TryStreamExt;
 
     #[tokio::test]
@@ -201,5 +208,17 @@ mod test {
         data.read_exact(&mut buff).await.expect("should not fail");
 
         assert_eq!(&buff, b"12345")
+    }
+
+    #[test]
+    fn test_signature_to_id() {
+        let expected_id =
+            Base64::from_str("Q2K1PXNWhFyPhqBXnZbonljqJQ_QeMStIVtmAluydSE").expect("should parse");
+        let sig = Base64::from_str("wIzrHPqxNFBJsjxBkTjYzL7J82err-wMhpvR8ryYMuPc2txKaQJjQ2jrMxvVmRHdgR-Vw3HzblWKw_WcYNF7e9J2f_JVBedwr9laDHqozJXiKrAfauLhP2Pjz23Ggp87f7iLDvDsG2-0ZVpCgxXkvqyKk_9vgTb2brdhj0oVSHJFKOL-q-OrrnfWchfAJiyAxS4jee3uadXNO2ENh8VeQegVbTB4G7WjqKwxPmgXpQwNucrkZOovWmbMNaFuC9BILo9WI_aOn_xvtqWI8zJBWr5JDqz_ph8O_AFaFp66ULph9ryvgYvr_WXFDfk8OvHOo-IKtwnttinugjPElGZ7u3xjahMmKRR-1k14uT8gTwdE40vyv1H3kS8yNvhqZWC2EKnoJvH3Bak0KPhhRMQ9BOJFoSvpzpauD_jQTJwyBhBt38TNUXW5cmGLB2y0ksyStA87wwaTV4E9iLzlOB-oO0m3SxWc-HVXAhucUYewGU3UZpLQypCry7EM1J7mvcroyOweKS2FAtVeHdAwKGIkgWzZeencgSyiOVhP1tLk55oOlDGX31sP3lhbLWN0I_TsxgmAs2GOnmIOSg784D0EEeX2zAYXW-s_Zs-h_lzvvyyeq9GDJqthFp0DdCY1yIrwDx-GOSf3e4h31mXjpfD_JH0P3bD30M-caUUMLb7BFYQ").expect("should parse");
+
+        let id = sha256(&sig.0);
+        let id = Base64::from(&id[..]);
+
+        assert_eq!(id, expected_id);
     }
 }

@@ -4,11 +4,11 @@ use arweave_rs::{
     crypto::base64::Base64,
     transaction::{tags::Tag, Tx},
 };
-use async_stream::try_stream;
 use futures_core::Stream;
 use reqwest::{StatusCode, Url};
 use serde::Deserialize;
 use serde_aux::prelude::*;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::bytes::Bytes;
 
 #[derive(Debug)]
@@ -49,6 +49,7 @@ pub struct TransactionChunk {
     pub chunk: Base64,
 }
 
+#[derive(Clone)]
 pub struct Client {
     base_url: Url,
     http_client: reqwest::Client,
@@ -127,20 +128,27 @@ impl Client {
         Ok(resp.json().await?)
     }
 
-    pub fn transaction_data_chunk_stream<'a>(
-        &'a self,
-        id: &'a Base64,
-    ) -> impl Stream<Item = anyhow::Result<Bytes>> + 'a {
-        try_stream! {
+    pub fn transaction_data_chunk_stream(
+        &self,
+        id: &Base64,
+    ) -> impl Stream<Item = anyhow::Result<Bytes>> {
+        let (tx, rx) = tokio::sync::mpsc::channel(2);
+
+        let client = self.clone();
+        let id = id.clone();
+        tokio::spawn(async move {
             // inspired by <https://github.com/everFinance/goar/blob/main/client.go#L612>
-            let tx_offset_data = self.fetch_transaction_offset(id).await?;
+            let tx_offset_data = client.fetch_transaction_offset(&id).await?;
             let mut chunk_offset = tx_offset_data.offset - tx_offset_data.size + 1;
             while chunk_offset < tx_offset_data.offset {
-                let data = self.fetch_chunk_data(chunk_offset).await?.chunk;
-                chunk_offset+= data.0.len();
-                yield Bytes::from(data.0);
+                let data = client.fetch_chunk_data(chunk_offset).await?.chunk;
+                chunk_offset += data.0.len();
+                // TODO we should pass actual errors here
+                tx.send(Ok(Bytes::from(data.0))).await?;
             }
+            anyhow::Result::<()>::Ok(())
+        });
 
-        }
+        ReceiverStream::new(rx)
     }
 }

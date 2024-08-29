@@ -61,7 +61,12 @@ async fn main() -> anyhow::Result<()> {
     println!("Parsing data");
     while let Some(data_item) = data_item_stream.try_next().await? {
         json_writer.write_item(&data_item).await?;
-        print!(".");
+        println!(
+            "[{}] tags count: {} data size: {}",
+            data_item.bundle_id,
+            data_item.tags.len(),
+            data_item.data.0.len(),
+        )
     }
     println!();
     println!("Done!");
