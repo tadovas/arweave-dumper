@@ -51,13 +51,18 @@ where
 
     let tags_size = reader.read_u64_le().await.context("tags_size")?;
 
-    let mut tag_data = vec![0; tags_size as usize];
-    reader
-        .read_exact(tag_data.as_mut_slice())
-        .await
-        .context("tag data")?;
+    let tags = if tags_size > 0 {
+        let mut tag_data = vec![0; tags_size as usize];
+        reader
+            .read_exact(tag_data.as_mut_slice())
+            .await
+            .context("tag data")?;
 
-    let tags = avro::parse_tag_list(tag_data.as_slice()).context("Avro tags parse")?;
+        avro::parse_tag_list(tag_data.as_slice()).context("Avro tags parse")?
+    } else {
+        vec![]
+    };
+
     assert_eq!(tag_count as usize, tags.len());
 
     let mut data = Vec::with_capacity(1024); // allocate 1kbytes initially
@@ -83,10 +88,11 @@ where
     try_stream! {
         let total_items = read_u256_as_u128(&mut reader).await.context("total DataItems read")?;
         let data_items_table = read_data_item_and_entry_id_table(&mut reader, total_items).await.context("DataItems table read")?;
+        let total = data_items_table.len();
 
-        for (data_item_size, _) in data_items_table {
+        for (idx, (data_item_size, _)) in data_items_table.into_iter().enumerate() {
             let mut data_item_reader = (&mut reader).take(data_item_size as u64);
-            let data_item = read_data_item(&mut data_item_reader).await.context("DataItem read")?;
+            let data_item = read_data_item(&mut data_item_reader).await.context(format!("DataItem {idx} of {total}  (size: {data_item_size}) read"))?;
             yield data_item
         }
 
